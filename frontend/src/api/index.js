@@ -54,3 +54,63 @@ export const uploadImage = (file) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then((r) => r.data)
 }
+
+export const getAISkills = () =>
+  api.get('/ai/skills').then((r) => r.data)
+
+async function streamAI(url, payload, { onChunk, onDone, onError, signal }) {
+  const token = localStorage.getItem('token')
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal,
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: '请求失败' }))
+      onError?.(err.detail || '请求失败')
+      return
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6))
+          if (data.error) { onError?.(data.error); return }
+          if (data.done) { onDone?.(); return }
+          if (data.chunk) { onChunk(data.chunk) }
+        }
+      }
+    }
+    onDone?.()
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      onDone?.()
+    } else {
+      onError?.(e.message || '网络错误')
+    }
+  }
+}
+
+export const streamAIContinue = (payload, callbacks) =>
+  streamAI('/api/ai/continue', payload, callbacks)
+
+export const streamAIPolish = (payload, callbacks) =>
+  streamAI('/api/ai/polish', payload, callbacks)
+
+export const streamAIGenerate = (payload, callbacks) =>
+  streamAI('/api/ai/generate', payload, callbacks)

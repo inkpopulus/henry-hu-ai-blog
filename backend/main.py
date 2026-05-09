@@ -1,14 +1,20 @@
 import hashlib
+import json as json_mod
+import traceback
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
 from database import init_db, list_posts, get_post, create_post, update_post, delete_post, list_tags, get_user, update_password
+from ai_function.router import router as ai_router
+from ai_function.config import load_config
+from ai_function.providers import get_provider, ChatMessage
 
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -20,6 +26,8 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 security = HTTPBearer(auto_error=False)
 
 app = FastAPI(title="Personal Blog API")
+
+app.include_router(ai_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -172,6 +180,124 @@ async def upload_image(file: UploadFile = File(...), username: str = Depends(req
     content = await file.read()
     (UPLOAD_DIR / filename).write_bytes(content)
     return {"url": f"/uploads/{filename}", "filename": filename}
+
+
+# --- AI Feature Endpoints ---
+
+class ContinueRequest(BaseModel):
+    content: str
+    selected_text: str | None = None
+
+
+class PolishRequest(BaseModel):
+    selected_text: str
+    content: str
+    instruction: str | None = None
+
+
+class GenerateRequest(BaseModel):
+    topic: str
+    outline: str | None = None
+
+
+def _get_feature_provider(feature_name: str):
+    """Load feature config and return (provider, model, temperature)."""
+    config = load_config()
+    feature_config = config.features.get(feature_name)
+    if not feature_config:
+        raise HTTPException(status_code=404, detail=f"Feature '{feature_name}' not configured")
+    provider_config = config.providers.get(feature_config.provider)
+    if not provider_config:
+        raise HTTPException(status_code=500, detail=f"Provider '{feature_config.provider}' not configured")
+    provider = get_provider(
+        name=provider_config.name,
+        api_key=provider_config.api_key,
+        base_url=provider_config.base_url,
+        extra_body=provider_config.extra_body,
+    )
+    model = feature_config.model or provider_config.default_model
+    return provider, model, feature_config.temperature
+
+
+def _sse_stream(provider, messages, model, temperature, max_tokens=4096):
+    """Create an SSE streaming response from a provider."""
+    async def event_stream():
+        try:
+            async for chunk in provider.stream_chat(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                yield f"data: {json_mod.dumps({'chunk': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json_mod.dumps({'done': True})}\n\n"
+        except Exception as e:
+            traceback.print_exc()
+            yield f"data: {json_mod.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/api/ai/continue")
+async def ai_continue(req: ContinueRequest, username: str = Depends(require_auth)):
+    provider, model, temperature = _get_feature_provider("continue")
+
+    if req.selected_text:
+        context = f"以下是文章的完整内容，用户选中了其中一段，请从选中位置继续写下去：\n\n{req.content}\n\n---\n选中的位置（从这里继续）：\n{req.selected_text}"
+    else:
+        context = f"以下是一篇正在写的文章，请从末尾自然地继续写下去：\n\n{req.content}"
+
+    messages = [
+        ChatMessage(role="system", content=(
+            "你是一个写作助手。请继续以下文本，保持相同的语气、风格和格式。"
+            "直接输出续写内容，不要加任何解释、前缀或总结。"
+            "使用 Markdown 格式。"
+        )),
+        ChatMessage(role="user", content=context),
+    ]
+    return _sse_stream(provider, messages, model, temperature)
+
+
+@app.post("/api/ai/polish")
+async def ai_polish(req: PolishRequest, username: str = Depends(require_auth)):
+    provider, model, temperature = _get_feature_provider("polish")
+
+    if req.instruction:
+        prompt = f"请根据以下指令改写这段文字：「{req.instruction}」\n\n原文：\n{req.selected_text}"
+    else:
+        prompt = f"请润色以下文字，使其更流畅、专业，保持原意不变：\n\n{req.selected_text}"
+
+    messages = [
+        ChatMessage(role="system", content=(
+            "你是一个文字润色助手。请改写用户提供的文字，保持原意但提升表达质量。"
+            "直接输出改写后的文字，不要加任何解释、前缀或总结。"
+            "保持原文的 Markdown 格式。"
+        )),
+        ChatMessage(role="user", content=prompt),
+    ]
+    return _sse_stream(provider, messages, model, temperature)
+
+
+@app.post("/api/ai/generate")
+async def ai_generate(req: GenerateRequest, username: str = Depends(require_auth)):
+    provider, model, temperature = _get_feature_provider("generate")
+
+    prompt = f"主题：{req.topic}"
+    if req.outline:
+        prompt += f"\n\n大纲：\n{req.outline}"
+
+    messages = [
+        ChatMessage(role="system", content=(
+            "你是一个博客写作助手。请根据用户提供的主题和可选大纲，写一篇完整的博客文章。"
+            "要求：\n"
+            "1. 文章以 # 标题开头\n"
+            "2. 使用 Markdown 格式\n"
+            "3. 内容充实、有深度、条理清晰\n"
+            "4. 语言自然流畅\n"
+            "5. 直接输出文章内容，不要加任何解释"
+        )),
+        ChatMessage(role="user", content=prompt),
+    ]
+    return _sse_stream(provider, messages, model, temperature)
 
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")

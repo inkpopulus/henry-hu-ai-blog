@@ -26,6 +26,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getPost, deletePost } from '../api'
 import { auth } from '../stores/auth'
+import { parseVideoEmbeds } from '../utils/videoEmbed'
 
 const props = defineProps({ id: String })
 const router = useRouter()
@@ -40,15 +41,31 @@ function escapeHtml(text) {
 }
 
 function renderMarkdown(text) {
-  // Code blocks
-  let result = text.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+  // Extract code blocks first to protect them from further processing
+  const codeBlocks = []
+  let result = text.replace(/```([\s\S]*?)```/g, (_, code) => {
+    const placeholder = `__CODEBLOCK_${codeBlocks.length}__`
+    codeBlocks.push('<pre><code>' + escapeHtml(code) + '</code></pre>')
+    return placeholder
+  })
   // Split into lines for block-level elements
   const lines = result.split('\n')
   const output = []
   let inList = false
 
   for (let line of lines) {
+    // Code block placeholder — pass through as-is
+    if (/^__CODEBLOCK_\d+__$/.test(line.trim())) {
+      if (inList) { output.push('</ul>'); inList = false }
+      output.push(line.trim())
+      continue
+    }
     // Headings
+    if (line.startsWith('#### ')) {
+      if (inList) { output.push('</ul>'); inList = false }
+      output.push('<h4>' + inlineMarkdown(escapeHtml(line.slice(5))) + '</h4>')
+      continue
+    }
     if (line.startsWith('### ')) {
       if (inList) { output.push('</ul>'); inList = false }
       output.push('<h3>' + inlineMarkdown(escapeHtml(line.slice(4))) + '</h3>')
@@ -76,6 +93,12 @@ function renderMarkdown(text) {
       output.push('<hr>')
       continue
     }
+    // Video embed tag
+    if (/^{% *(bilibili|youtube) +\S+ *%}$/i.test(line.trim())) {
+      if (inList) { output.push('</ul>'); inList = false }
+      output.push(line.trim())
+      continue
+    }
     // Empty line
     if (line.trim() === '') {
       if (inList) { output.push('</ul>'); inList = false }
@@ -87,7 +110,9 @@ function renderMarkdown(text) {
     output.push('<p>' + inlineMarkdown(escapeHtml(line)) + '</p>')
   }
   if (inList) output.push('</ul>')
-  return output.join('\n')
+  // Restore code blocks and parse video embeds
+  const html = output.join('\n').replace(/__CODEBLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
+  return parseVideoEmbeds(html)
 }
 
 function inlineMarkdown(text) {
@@ -140,6 +165,13 @@ async function handleDelete() {
   font-size: 18px;
   font-weight: 600;
   margin: 24px 0 10px;
+  color: var(--text);
+}
+
+.post-body :deep(h4) {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 20px 0 8px;
   color: var(--text);
 }
 
@@ -210,5 +242,24 @@ async function handleDelete() {
   border-radius: 10px;
   margin: 20px 0;
   box-shadow: var(--shadow);
+}
+
+.post-body :deep(.video-embed) {
+  position: relative;
+  width: 100%;
+  max-width: 680px;
+  aspect-ratio: 16 / 9;
+  margin: 24px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.post-body :deep(.video-embed iframe) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 </style>

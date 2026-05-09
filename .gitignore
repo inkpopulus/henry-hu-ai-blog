@@ -24,6 +24,7 @@ pnpm-debug.log*
 
 # Uploads & user data
 backend/uploads/
+backend/ai_config.json
 
 # OS generated
 .DS_Store
