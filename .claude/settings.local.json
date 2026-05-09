@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Read(//usr/local/bin/**)",
+      "Read(//Users/yang/.nvm/versions/**)",
+      "Bash(chmod +x *)",
+      "Bash(brew install *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(curl *)",
+      "Bash(python main.py)",
+      "Bash(/Users/yang/Documents/test_vibe_coding/.venv/bin/python *)",
+      "Bash(/Users/yang/Documents/test_vibe_coding/.venv/bin/pip list *)",
+      "Bash(/Users/yang/Documents/test_vibe_coding/.venv/bin/pip install *)",
+      "Bash(xargs kill)",
+      "Bash(python3 -m json.tool)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
