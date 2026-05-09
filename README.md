@@ -12,6 +12,8 @@
 - 文章的创建、编辑、删除
 - Markdown 编辑器（加粗、斜体、标题、引用、代码块、链接）
 - 本地图片上传 + 网络图片插入
+- 视频嵌入（Bilibili、YouTube，支持粘贴链接自动识别）
+- AI 写作助手（续写、润色、生成文章，流式输出）
 - 标签下拉筛选（支持搜索）
 - 全文关键词搜索
 - JWT 登录认证
@@ -116,11 +118,17 @@ server {
 
 ```
 ├── backend/
-│   ├── main.py          # FastAPI 应用入口
-│   ├── database.py      # SQLite 数据库操作
-│   ├── requirements.txt # Python 依赖
-│   ├── uploads/         # 上传的图片
-│   └── blog.db          # SQLite 数据库文件（自动生成）
+│   ├── main.py              # FastAPI 应用入口、博客 CRUD、AI 功能端点
+│   ├── database.py          # SQLite 数据库操作
+│   ├── requirements.txt     # Python 依赖
+│   ├── ai_config.json       # AI 提供商和功能配置（不入库，含 API Key）
+│   ├── ai_function/         # AI Skill 平台（可扩展）
+│   │   ├── config.py        # 配置加载器
+│   │   ├── providers.py     # AI 提供商抽象（OpenAI、Anthropic、DashScope）
+│   │   ├── router.py        # Skill 端点
+│   │   └── skills.py        # Skill 定义
+│   ├── uploads/             # 上传的图片
+│   └── blog.db              # SQLite 数据库文件（自动生成）
 ├── frontend/
 │   ├── index.html
 │   ├── package.json
@@ -129,17 +137,54 @@ server {
 │       ├── main.js
 │       ├── App.vue
 │       ├── style.css
-│       ├── api/index.js       # API 请求封装
-│       ├── router/index.js    # 路由配置
-│       ├── stores/auth.js     # 认证状态管理
+│       ├── api/index.js          # API 请求封装 + AI 流式调用
+│       ├── router/index.js       # 路由配置
+│       ├── stores/auth.js        # 认证状态管理
+│       ├── utils/
+│       │   └── videoEmbed.js     # 视频嵌入平台注册表
 │       └── views/
-│           ├── Home.vue           # 首页
-│           ├── PostDetail.vue     # 文章详情
-│           ├── NewPost.vue        # 新建/编辑文章
-│           ├── Login.vue          # 登录
+│           ├── Home.vue          # 首页
+│           ├── PostDetail.vue    # 文章详情 + Markdown 渲染
+│           ├── NewPost.vue       # 新建/编辑文章 + AI 编辑器
+│           ├── Login.vue         # 登录
 │           └── ChangePassword.vue # 修改密码
-└── start.sh             # 一键启动脚本
+└── start.sh                 # 一键启动脚本
 ```
+
+## AI 配置
+
+编辑 `backend/ai_config.json` 配置 AI 提供商和功能：
+
+```json
+{
+  "providers": {
+    "my_provider": {
+      "name": "openai",
+      "api_key": "sk-your-key",
+      "base_url": "https://api.example.com/v1",
+      "default_model": "model-name"
+    }
+  },
+  "features": {
+    "continue": { "provider": "my_provider", "temperature": 0.8 },
+    "polish": { "provider": "my_provider", "temperature": 0.3 },
+    "generate": { "provider": "my_provider", "temperature": 0.7 }
+  }
+}
+```
+
+支持的提供商类型：`openai`、`anthropic`、`dashscope`。
+
+## 视频嵌入
+
+在文章中使用以下语法嵌入视频：
+
+```markdown
+{% bilibili BV1xx411c7mD %}
+{% youtube dQw4w9WgXcQ %}
+```
+
+也支持粘贴完整链接自动提取视频 ID。
 
 ## API 接口
 
@@ -155,3 +200,8 @@ server {
 | DELETE | `/api/posts/:id` | 删除文章 | 是 |
 | GET | `/api/tags` | 所有标签 | 否 |
 | POST | `/api/upload` | 上传图片 | 是 |
+| POST | `/api/ai/continue` | AI 续写（SSE 流式） | 是 |
+| POST | `/api/ai/polish` | AI 润色（SSE 流式） | 是 |
+| POST | `/api/ai/generate` | AI 生成文章（SSE 流式） | 是 |
+| GET | `/api/ai/skills` | 列出可用 AI Skills | 否 |
+| POST | `/api/ai/skills/:name` | 执行 AI Skill（SSE 流式） | 是 |
