@@ -89,7 +89,7 @@
     </div>
 
     <!-- Video embed dialog -->
-    <div v-if="showVideoDialog" class="dialog-overlay" @click.self="showVideoDialog = false">
+    <div v-if="showVideoDialog" class="dialog-overlay" @mousedown.self="showVideoDialog = false">
       <div class="dialog">
         <h3>插入视频</h3>
         <div class="form-group">
@@ -113,7 +113,7 @@
     </div>
 
     <!-- Network image dialog -->
-    <div v-if="showImageDialog" class="dialog-overlay" @click.self="showImageDialog = false">
+    <div v-if="showImageDialog" class="dialog-overlay" @mousedown.self="showImageDialog = false">
       <div class="dialog">
         <h3>插入网络图片</h3>
         <input v-model="imageUrl" placeholder="输入图片 URL，如 https://example.com/img.png" @keydown.enter="insertNetworkImage" />
@@ -125,7 +125,7 @@
     </div>
 
     <!-- AI Generate article dialog -->
-    <div v-if="showGenerateDialog" class="dialog-overlay" @click.self="showGenerateDialog = false">
+    <div v-if="showGenerateDialog" class="dialog-overlay" @mousedown.self="showGenerateDialog = false">
       <div class="dialog">
         <h3>AI 生成文章</h3>
         <div class="form-group">
@@ -144,7 +144,7 @@
     </div>
 
     <!-- AI Polish dialog -->
-    <div v-if="showPolishDialog" class="dialog-overlay" @click.self="showPolishDialog = false">
+    <div v-if="showPolishDialog" class="dialog-overlay" @mousedown.self="showPolishDialog = false">
       <div class="dialog">
         <h3>AI 润色</h3>
         <div class="form-group">
@@ -346,7 +346,6 @@ function handleContinue() {
   const selected = el ? form.content.substring(el.selectionStart, el.selectionEnd) : ''
 
   startAI()
-  const appendPos = form.content.length
   streamAIContinue({
     content: form.content,
     selected_text: selected || undefined,

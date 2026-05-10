@@ -24,6 +24,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { marked } from 'marked'
 import { getPost, deletePost } from '../api'
 import { auth } from '../stores/auth'
 import { parseVideoEmbeds } from '../utils/videoEmbed'
@@ -32,103 +33,36 @@ const props = defineProps({ id: String })
 const router = useRouter()
 const post = ref(null)
 
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+// Configure marked
+const VIDEO_PLACEHOLDER_RE = /\{% *(bilibili|youtube) +\S+ *%\}/gi
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
+
+const renderer = new marked.Renderer()
+
+renderer.image = function ({ href, title, text }) {
+  const alt = text ? ` alt="${text}"` : ''
+  return `<img src="${href}"${alt} class="post-image">`
 }
 
 function renderMarkdown(text) {
-  // Extract code blocks first to protect them from further processing
-  const codeBlocks = []
-  let result = text.replace(/```([\s\S]*?)```/g, (_, code) => {
-    const placeholder = `__CODEBLOCK_${codeBlocks.length}__`
-    codeBlocks.push('<pre><code>' + escapeHtml(code) + '</code></pre>')
-    return placeholder
+  // Replace video embed tags with placeholders before marked processes them
+  const videoSlots = []
+  const protectedText = text.replace(VIDEO_PLACEHOLDER_RE, (match) => {
+    const idx = videoSlots.length
+    videoSlots.push(match)
+    return `%%VIDEO_${idx}%%`
   })
-  // Split into lines for block-level elements
-  const lines = result.split('\n')
-  const output = []
-  let inList = false
 
-  for (let line of lines) {
-    // Code block placeholder — pass through as-is
-    if (/^__CODEBLOCK_\d+__$/.test(line.trim())) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push(line.trim())
-      continue
-    }
-    // Headings
-    if (line.startsWith('#### ')) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('<h4>' + inlineMarkdown(escapeHtml(line.slice(5))) + '</h4>')
-      continue
-    }
-    if (line.startsWith('### ')) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('<h3>' + inlineMarkdown(escapeHtml(line.slice(4))) + '</h3>')
-      continue
-    }
-    if (line.startsWith('## ')) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('<h2>' + inlineMarkdown(escapeHtml(line.slice(3))) + '</h2>')
-      continue
-    }
-    if (line.startsWith('# ')) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('<h2>' + inlineMarkdown(escapeHtml(line.slice(2))) + '</h2>')
-      continue
-    }
-    // Blockquote
-    if (line.startsWith('> ')) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('<blockquote>' + inlineMarkdown(escapeHtml(line.slice(2))) + '</blockquote>')
-      continue
-    }
-    // Horizontal rule
-    if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim())) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('<hr>')
-      continue
-    }
-    // Video embed tag
-    if (/^{% *(bilibili|youtube) +\S+ *%}$/i.test(line.trim())) {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push(line.trim())
-      continue
-    }
-    // Empty line
-    if (line.trim() === '') {
-      if (inList) { output.push('</ul>'); inList = false }
-      output.push('')
-      continue
-    }
-    // Normal text
-    if (inList) { output.push('</ul>'); inList = false }
-    output.push('<p>' + inlineMarkdown(escapeHtml(line)) + '</p>')
-  }
-  if (inList) output.push('</ul>')
-  // Restore code blocks and parse video embeds
-  const html = output.join('\n').replace(/__CODEBLOCK_(\d+)__/g, (_, i) => codeBlocks[parseInt(i)])
+  let html = marked.parse(protectedText, { renderer })
+
+  // Restore video embeds and parse via videoEmbed utility
+  html = html.replace(/<p>%%VIDEO_(\d+)%%<\/p>/g, (_, i) => videoSlots[parseInt(i)])
+  html = html.replace(/%%VIDEO_(\d+)%%/g, (_, i) => videoSlots[parseInt(i)])
   return parseVideoEmbeds(html)
-}
-
-function inlineMarkdown(text) {
-  // Images
-  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="post-image">')
-  // Links
-  text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-  // Bold
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  // Italic
-  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  // Strikethrough
-  text = text.replace(/~~(.+?)~~/g, '<del>$1</del>')
-  // Inline code
-  text = text.replace(/`(.+?)`/g, '<code>$1</code>')
-  return text
 }
 
 const renderedContent = computed(() => {
@@ -154,6 +88,13 @@ async function handleDelete() {
   color: var(--text);
 }
 
+.post-body :deep(h1) {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 32px 0 14px;
+  color: var(--text);
+}
+
 .post-body :deep(h2) {
   font-size: 22px;
   font-weight: 700;
@@ -173,6 +114,38 @@ async function handleDelete() {
   font-weight: 600;
   margin: 20px 0 8px;
   color: var(--text);
+}
+
+.post-body :deep(ul),
+.post-body :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.post-body :deep(li) {
+  margin: 4px 0;
+}
+
+.post-body :deep(table) {
+  border-collapse: collapse;
+  margin: 16px 0;
+  width: 100%;
+}
+
+.post-body :deep(th),
+.post-body :deep(td) {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.post-body :deep(th) {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.post-body :deep(input[type="checkbox"]) {
+  margin-right: 6px;
 }
 
 .post-body :deep(p) {

@@ -10,6 +10,106 @@ Henry Hu's Blog — a personal blog system with AI-powered writing assistance an
 - **Frontend**: Vue 3 / Vite / Axios
 - **AI**: Multi-provider support (OpenAI, Anthropic, DashScope, MiniMax)
 
+## Workflow Rules
+
+### Multi-Session Collaboration
+
+This project uses a dual-session Claude workflow.
+
+Two independent Claude sessions work together:
+
+### Session A — Planner
+
+Responsibilities:
+
+- architecture design
+- task decomposition
+- API design
+- database structure decisions
+- identifying blockers
+- maintaining PLAN.md
+
+Rules:
+
+- do not directly write implementation code
+- focus on long-term maintainability
+- prioritize system stability
+- output decisions into PLAN.md
+
+---
+
+### Session B — Executor
+
+Responsibilities:
+
+- code implementation
+- debugging
+- bug fixing
+- feature completion based on PLAN.md
+
+Rules:
+
+- do not redesign architecture without strong reason
+- follow PLAN.md strictly
+- prefer minimal code changes
+- do not modify unrelated modules
+- stability first, optimization second
+
+---
+
+### Collaboration Rules
+
+Communication must happen through files, not memory.
+
+Use:
+
+- PLAN.md → current execution plan
+- TODO.md → task breakdown (optional)
+- REVIEW.md → review notes (optional)
+- BUG.md → debugging notes (optional)
+
+PLAN.md is maintained only by Planner. Executor never modifies PLAN.md directly. Executor reports facts. Planner updates decisions.
+
+Never assume another session remembers context.
+
+Always read project files first before making decisions.
+
+---
+
+### Context Management
+
+When context usage exceeds 65%:
+
+/compact
+
+When context becomes unreliable:
+
+/new
+
+Avoid long single-session conversations.
+
+Prefer multiple focused sessions over one overloaded session.
+
+---
+
+### Coding Philosophy
+
+- minimal changes first
+- no unnecessary refactor
+- do not modify unrelated modules
+- explain before modifying
+- test after changes
+- preserve existing architecture unless necessary
+- backend API consistency is priority
+- frontend polish comes after stability
+
+### Security Rules
+
+- 不要在源码中硬编码密码、密钥等敏感信息，从环境变量或配置文件读取
+- AI provider API 密钥由用户在 `ai_config.json` 中自行配置（已 gitignore）
+- 应用凭据（admin 密码、JWT 密钥等）从环境变量读取
+- 事故记录：2026-05-10，admin123 和 JWT secret 硬编码在源码中并提交到公开 repo
+
 ## Running
 
 ```bash

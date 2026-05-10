@@ -26,7 +26,7 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
-import axios from 'axios'
+import { changePassword } from '../api'
 
 const loading = ref(false)
 const error = ref('')
@@ -38,10 +38,7 @@ async function handleSubmit() {
   error.value = ''
   success.value = ''
   try {
-    const token = localStorage.getItem('token')
-    await axios.put('/api/password', form, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    await changePassword(form)
     success.value = '密码修改成功'
     form.old_password = ''
     form.new_password = ''

@@ -106,10 +106,22 @@ class GenerateArticleSkill(AISkill):
         return raw_output.strip()
 
 
+class ChatSkill(AISkill):
+    name = "chat"
+    description = "对话助手：与 AI 进行多轮对话，辅助写作"
+
+    def build_messages(self, **kwargs) -> list[ChatMessage]:
+        messages = kwargs.get("messages", [])
+        if not messages:
+            raise ValueError("messages is required for chat skill")
+        return messages
+
+
 SKILL_REGISTRY: dict[str, type[AISkill]] = {
     "continue_writing": ContinueWritingSkill,
     "polish": PolishSkill,
     "generate_article": GenerateArticleSkill,
+    "chat": ChatSkill,
 }
 
 

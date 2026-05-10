@@ -42,7 +42,8 @@ async function handleLogin() {
     const res = await login(form.username, form.password)
     auth.setToken(res.access_token)
     await auth.check()
-    router.push('/')
+    const redirect = router.currentRoute.value.query.redirect
+    router.push(redirect || '/')
   } catch (e) {
     error.value = e.response?.data?.detail || '登录失败'
   } finally {

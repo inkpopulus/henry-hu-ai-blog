@@ -1,5 +1,7 @@
+import os
 import sqlite3
 import json
+import sys
 from pathlib import Path
 from datetime import datetime
 
@@ -34,8 +36,11 @@ def init_db():
     # Seed default admin if no users exist
     user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     if user_count == 0:
-        import hashlib
-        default_hash = hashlib.sha256("admin123".encode()).hexdigest()
+        import bcrypt
+        admin_password = os.environ.get("ADMIN_PASSWORD", "changeme")
+        if admin_password == "changeme":
+            print("[WARNING] ADMIN_PASSWORD 环境变量未设置，使用默认密码 'changeme'。请尽快修改。", file=sys.stderr)
+        default_hash = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt()).decode()
         conn.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
             ("admin", default_hash),

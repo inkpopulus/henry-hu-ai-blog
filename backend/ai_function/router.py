@@ -3,35 +3,19 @@ import traceback
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from jose import jwt, JWTError
 
+from auth import require_auth
 from .config import load_config
 from .providers import get_provider
 from .skills import get_skill, list_skills
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
-security = HTTPBearer(auto_error=False)
 
-SECRET_KEY = "your-secret-key-change-in-production"
-ALGORITHM = "HS256"
-
-
-def require_auth(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
-) -> str:
-    if credentials is None:
-        raise HTTPException(status_code=401, detail="未登录")
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=401, detail="无效的凭证")
-        return username
-    except JWTError:
-        raise HTTPException(status_code=401, detail="凭证已过期或无效")
+class ChatMessageInput(BaseModel):
+    role: str
+    content: str
 
 
 class AIRequest(BaseModel):
@@ -40,6 +24,7 @@ class AIRequest(BaseModel):
     instruction: str | None = None
     topic: str | None = None
     outline: str | None = None
+    messages: list[ChatMessageInput] | None = None
 
 
 @router.get("/skills")
@@ -67,13 +52,17 @@ async def run_skill(skill_name: str, req: AIRequest, username: str = Depends(req
 
     try:
         skill = get_skill(skill_name)
-        messages = skill.build_messages(
-            content=req.content,
-            selected_text=req.selected_text,
-            instruction=req.instruction,
-            topic=req.topic,
-            outline=req.outline,
-        )
+        if req.messages:
+            from .providers import ChatMessage
+            messages = [ChatMessage(role=m.role, content=m.content) for m in req.messages]
+        else:
+            messages = skill.build_messages(
+                content=req.content,
+                selected_text=req.selected_text,
+                instruction=req.instruction,
+                topic=req.topic,
+                outline=req.outline,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

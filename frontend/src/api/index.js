@@ -55,8 +55,8 @@ export const uploadImage = (file) => {
   }).then((r) => r.data)
 }
 
-export const getAISkills = () =>
-  api.get('/ai/skills').then((r) => r.data)
+export const changePassword = (data) =>
+  api.put('/password', data).then((r) => r.data)
 
 async function streamAI(url, payload, { onChunk, onDone, onError, signal }) {
   const token = localStorage.getItem('token')
@@ -107,10 +107,13 @@ async function streamAI(url, payload, { onChunk, onDone, onError, signal }) {
 }
 
 export const streamAIContinue = (payload, callbacks) =>
-  streamAI('/api/ai/continue', payload, callbacks)
+  streamAI('/api/ai/skills/continue_writing', payload, callbacks)
 
 export const streamAIPolish = (payload, callbacks) =>
-  streamAI('/api/ai/polish', payload, callbacks)
+  streamAI('/api/ai/skills/polish', payload, callbacks)
 
 export const streamAIGenerate = (payload, callbacks) =>
-  streamAI('/api/ai/generate', payload, callbacks)
+  streamAI('/api/ai/skills/generate_article', payload, callbacks)
+
+export const streamAIChat = (messages, callbacks) =>
+  streamAI('/api/ai/skills/chat', { messages }, callbacks)
